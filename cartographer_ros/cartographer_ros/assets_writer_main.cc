@@ -104,6 +104,11 @@ std::unique_ptr<carto::io::PointsBatch> HandleMessage(
     points_batch->intensities.push_back(point_cloud.intensities[i]);
     // We use the last transform for the origin, which is approximately correct.
     points_batch->origin = sensor_to_map * Eigen::Vector3f::Zero();
+    
+    //write trajectory
+    std::ofstream outfile;
+    outfile.open("trajectory.txt", std::ios_base::app);
+    outfile << message.header.stamp << " " << std::setprecision(10) << sensor_to_map.translation()(0,0) << " " << sensor_to_map.translation()(1,0) << " " << sensor_to_map.translation()(2,0) << " " << sensor_to_map.rotation().x() << " " << sensor_to_map.rotation().y() << " " << sensor_to_map.rotation().z() << " " << sensor_to_map.rotation().w() << "\n";
   }
   if (points_batch->points.empty()) {
     return nullptr;
