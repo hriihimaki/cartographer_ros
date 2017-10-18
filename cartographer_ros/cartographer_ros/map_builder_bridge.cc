@@ -36,6 +36,30 @@ constexpr double kConstraintMarkerScale = 0.025;
   return result;
 }
 
+visualization_msgs::Marker CreateTrajectoryMarker(const int trajectory_id,
+                                                  const std::string& frame_id) {
+  visualization_msgs::Marker marker;
+  marker.ns = "Trajectory " + std::to_string(trajectory_id);
+  marker.id = 0;
+  marker.type = visualization_msgs::Marker::LINE_STRIP;
+  marker.header.stamp = ::ros::Time::now();
+  marker.header.frame_id = frame_id;
+  marker.color = ToMessage(cartographer::io::GetColor(trajectory_id));
+  marker.scale.x = kTrajectoryLineStripMarkerScale;
+  marker.pose.orientation.w = 1.;
+  marker.pose.position.z = 0.05;
+  return marker;
+}
+
+void PushAndResetLineMarker(visualization_msgs::Marker* marker,
+                            std::vector<visualization_msgs::Marker>* markers) {
+  if (marker->points.size() > 1) {
+    markers->push_back(*marker);
+    ++marker->id;
+  }
+  marker->points.clear();
+}
+
 }  // namespace
 
 MapBuilderBridge::MapBuilderBridge(const NodeOptions& node_options,
@@ -126,23 +150,13 @@ cartographer_ros_msgs::SubmapList MapBuilderBridge::GetSubmapList() {
   cartographer_ros_msgs::SubmapList submap_list;
   submap_list.header.stamp = ::ros::Time::now();
   submap_list.header.frame_id = node_options_.map_frame;
-  const auto all_submap_data =
-      map_builder_.sparse_pose_graph()->GetAllSubmapData();
-  for (size_t trajectory_id = 0; trajectory_id < all_submap_data.size();
-       ++trajectory_id) {
-    for (size_t submap_index = 0;
-         submap_index < all_submap_data[trajectory_id].size(); ++submap_index) {
-      const auto& submap_data = all_submap_data[trajectory_id][submap_index];
-      if (submap_data.submap == nullptr) {
-        continue;
-      }
-      cartographer_ros_msgs::SubmapEntry submap_entry;
-      submap_entry.trajectory_id = trajectory_id;
-      submap_entry.submap_index = submap_index;
-      submap_entry.submap_version = submap_data.submap->num_range_data();
-      submap_entry.pose = ToGeometryMsgPose(submap_data.pose);
-      submap_list.submap.push_back(submap_entry);
-    }
+  for (const auto& submap_id_data : map_builder_.sparse_pose_graph()->GetAllSubmapData()) {
+    cartographer_ros_msgs::SubmapEntry submap_entry;
+    submap_entry.trajectory_id = submap_id_data.id.trajectory_id;
+    submap_entry.submap_index = submap_id_data.id.submap_index;
+    submap_entry.submap_version = submap_id_data.data.submap->num_range_data();
+    submap_entry.pose = ToGeometryMsgPose(submap_id_data.data.pose);
+    submap_list.submap.push_back(submap_entry);
   }
   return submap_list;
 }
@@ -184,34 +198,26 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetTrajectoryNodeList() {
        trajectory_id < static_cast<int>(all_trajectory_nodes.size());
        ++trajectory_id) {
     const auto& single_trajectory_nodes = all_trajectory_nodes[trajectory_id];
-    visualization_msgs::Marker marker;
-    marker.ns = "Trajectory " + std::to_string(trajectory_id);
-    marker.id = 0;
-    marker.type = visualization_msgs::Marker::LINE_STRIP;
-    marker.header.stamp = ::ros::Time::now();
-    marker.header.frame_id = node_options_.map_frame;
-    marker.color = ToMessage(cartographer::io::GetColor(trajectory_id));
-    marker.scale.x = kTrajectoryLineStripMarkerScale;
-    marker.pose.orientation.w = 1.0;
-    marker.pose.position.z = 0.05;
+    visualization_msgs::Marker marker =
+        CreateTrajectoryMarker(trajectory_id, node_options_.map_frame);
+
     for (const auto& node : single_trajectory_nodes) {
-      if (node.trimmed()) {
+      if (node.constant_data == nullptr) {
+        PushAndResetLineMarker(&marker, &trajectory_node_list.markers);
         continue;
       }
       const ::geometry_msgs::Point node_point =
-          ToGeometryMsgPoint(node.pose.translation());
+          ToGeometryMsgPoint(node.global_pose.translation());
       marker.points.push_back(node_point);
       // Work around the 16384 point limit in RViz by splitting the
       // trajectory into multiple markers.
       if (marker.points.size() == 16384) {
-        trajectory_node_list.markers.push_back(marker);
-        ++marker.id;
-        marker.points.clear();
+        PushAndResetLineMarker(&marker, &trajectory_node_list.markers);
         // Push back the last point, so the two markers appear connected.
         marker.points.push_back(node_point);
       }
     }
-    trajectory_node_list.markers.push_back(marker);
+    PushAndResetLineMarker(&marker, &trajectory_node_list.markers);
   }
   return trajectory_node_list;
 }
@@ -248,7 +254,7 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetConstraintList() {
 
   const auto all_trajectory_nodes =
       map_builder_.sparse_pose_graph()->GetTrajectoryNodes();
-  const auto all_submap_data =
+  const auto submap_data =
       map_builder_.sparse_pose_graph()->GetAllSubmapData();
   const auto constraints = map_builder_.sparse_pose_graph()->constraints();
 
@@ -283,14 +289,15 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetConstraintList() {
       residual_marker->colors.push_back(color_residual);
     }
 
-    const auto& submap_data =
-        all_submap_data[constraint.submap_id.trajectory_id]
-                       [constraint.submap_id.submap_index];
-    const auto& submap_pose = submap_data.pose;
+    const auto submap_it = submap_data.find(constraint.submap_id);
+    if (submap_it == submap_data.end()) {
+      continue;
+    }
+    const auto& submap_pose = submap_it->data.pose;
     const auto& trajectory_node_pose =
         all_trajectory_nodes[constraint.node_id.trajectory_id]
                             [constraint.node_id.node_index]
-                                .pose;
+                                .global_pose;
     const cartographer::transform::Rigid3d constraint_pose =
         submap_pose * constraint.pose.zbar_ij;
 
