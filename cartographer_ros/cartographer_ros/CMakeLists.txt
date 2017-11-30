@@ -15,6 +15,8 @@
 google_binary(cartographer_assets_writer
   SRCS
     assets_writer_main.cc
+    ros_map_writing_points_processor.h
+    ros_map_writing_points_processor.cc
 )
 
 install(TARGETS cartographer_assets_writer
@@ -77,3 +79,15 @@ install(TARGETS cartographer_rosbag_validate
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
+
+google_binary(cartographer_pbstream_to_ros_map
+  SRCS
+    pbstream_to_ros_map_main.cc
+)
+
+install(TARGETS cartographer_pbstream_to_ros_map
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
