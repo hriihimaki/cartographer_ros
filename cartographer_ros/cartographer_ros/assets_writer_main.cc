@@ -69,6 +69,8 @@ DEFINE_string(output_file_prefix, "",
               "define the output directory. If empty, the first bag filename "
               "will be used.");
 
+std::string trajectoryName = "trajectory.txt";
+
 namespace cartographer_ros {
 namespace {
 
@@ -110,11 +112,24 @@ std::unique_ptr<carto::io::PointsBatch> HandleMessage(
     // We use the last transform for the origin, which is approximately correct.
     points_batch->origin = sensor_to_map * Eigen::Vector3f::Zero();
     
-    //write trajectory
-    std::ofstream outfile;
-    outfile.open("trajectory.txt", std::ios_base::app);
-    outfile << message.header.stamp << " " << std::setprecision(10) << sensor_to_map.translation()(0,0) << " " << sensor_to_map.translation()(1,0) << " " << sensor_to_map.translation()(2,0) << " " << sensor_to_map.rotation().x() << " " << sensor_to_map.rotation().y() << " " << sensor_to_map.rotation().z() << " " << sensor_to_map.rotation().w() << "\n";
   }
+
+  //rotation & translation for writing trajectory
+  if (point_cloud.points.size() > 0){
+  	const carto::common::Time time_start = start_time + carto::common::FromSeconds(point_cloud.points[size_t(0)][3]);
+  	if (transform_interpolation_buffer.Has(time_start)) {
+  		const carto::transform::Rigid3d tracking_to_map_start = transform_interpolation_buffer.Lookup(time_start);
+  		const carto::transform::Rigid3d sensor_to_tracking_start = ToRigid3d(tf_buffer.lookupTransform(tracking_frame, message.header.frame_id, ToRos(time_start)));
+  		const carto::transform::Rigid3f sensor_to_map_start = (tracking_to_map_start * sensor_to_tracking_start).cast<float>();
+  
+  		//write trajectory
+  		std::ofstream outfile;
+  		outfile.open(trajectoryName, std::ios_base::app);
+  		outfile << message.header.stamp << " " << std::setprecision(10) << sensor_to_map_start.translation()(0,0) << " " << sensor_to_map_start.translation()(1,0) << " " << sensor_to_map_start.translation()(2,0) << " " << sensor_to_map_start.rotation().x() << " " << sensor_to_map_start.rotation().y() << " " << sensor_to_map_start.rotation().z() << " " << sensor_to_map_start.rotation().w() << "\n";
+		outfile.close();
+  	}
+  }
+  
   if (points_batch->points.empty()) {
     return nullptr;
   }
@@ -274,6 +289,12 @@ int main(int argc, char** argv) {
   CHECK(!FLAGS_bag_filenames.empty()) << "-bag_filenames is missing.";
   CHECK(!FLAGS_pose_graph_filename.empty())
       << "-pose_graph_filename is missing.";
+
+  //opening trajectory file
+  trajectoryName = FLAGS_pose_graph_filename + "_traj.txt";
+  //std::ofstream outfile;
+  //outfile.open(trajectoryName, std::ios_base::in);
+  //outfile.close();
 
   ::cartographer_ros::Run(
       FLAGS_pose_graph_filename,
