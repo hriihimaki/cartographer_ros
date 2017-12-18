@@ -54,6 +54,9 @@ geometry_msgs::Point ToGeometryMsgPoint(const Eigen::Vector3d& vector3d);
 ::cartographer::sensor::PointCloudWithIntensities ToPointCloudWithIntensities(
     const sensor_msgs::PointCloud2& message);
 
+/*::cartographer::sensor::PointCloudWithIntensitiesRings ToPointCloudWithIntensitiesRings(
+    const sensor_msgs::PointCloud2& message);*/
+
 ::cartographer::transform::Rigid3d ToRigid3d(
     const geometry_msgs::TransformStamped& transform);
 

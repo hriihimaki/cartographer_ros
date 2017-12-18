@@ -46,6 +46,9 @@
 #include "tf2_msgs/TFMessage.h"
 #include "tf2_ros/buffer.h"
 #include "urdf/model.h"
+#include "pcl/point_cloud.h"
+#include "pcl/point_types.h"
+#include "pcl_conversions/pcl_conversions.h"
 
 DEFINE_string(configuration_directory, "",
               "First directory in which configuration files are searched, "
@@ -91,7 +94,9 @@ std::unique_ptr<carto::io::PointsBatch> HandleMessage(
 
   carto::sensor::PointCloudWithIntensities point_cloud =
       ToPointCloudWithIntensities(message);
+
   CHECK_EQ(point_cloud.intensities.size(), point_cloud.points.size());
+  //CHECK_EQ(point_cloud.rings.size(), point_cloud.points.size());
 
   for (size_t i = 0; i < point_cloud.points.size(); ++i) {
     const carto::common::Time time =
@@ -109,6 +114,7 @@ std::unique_ptr<carto::io::PointsBatch> HandleMessage(
     points_batch->points.push_back(sensor_to_map *
                                    point_cloud.points[i].head<3>());
     points_batch->intensities.push_back(point_cloud.intensities[i]);
+    //points_batch->rings.push_back(point_cloud.rings[i]);
     // We use the last transform for the origin, which is approximately correct.
     points_batch->origin = sensor_to_map * Eigen::Vector3f::Zero();
     

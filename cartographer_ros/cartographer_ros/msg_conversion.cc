@@ -189,6 +189,91 @@ PointCloudWithIntensities ToPointCloudWithIntensities(
   return point_cloud;
 }
 
+
+/*
+PointCloudWithIntensities ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
+	PointCloudWithIntensities point_cloud;
+	// We check for intensity field here to avoid run-time warnings if we pass in
+	// a PointCloud2 without intensity.
+	int pointCount=message.height * message.width;	//how many points in message
+	float x,y,z,i;					//coords,intensity and ring
+	int r;
+	uint8_t xbytes[sizeof(float)];
+	uint8_t ybytes[sizeof(float)];
+	uint8_t zbytes[sizeof(float)];
+	uint8_t ibytes[sizeof(float)];
+	uint8_t rbytes[sizeof(int)];			//coords,intensity and ring in uint8_t
+	
+	
+	if (PointCloud2HasField(message, "intensity")) {
+		//check if ring info exists
+		if (PointCloud2HasField(message, "ring")) {
+			//intensity & ring
+			for (int ii=0;ii<pointCount;ii++) {
+				//read bytes of next point
+				memcpy(&xbytes, &message.data[int(message.point_step)*ii], sizeof(float));
+				memcpy(&ybytes, &message.data[int(message.point_step)*ii + 4], sizeof(float));
+				memcpy(&zbytes, &message.data[int(message.point_step)*ii + 8], sizeof(float));
+				memcpy(&ibytes, &message.data[int(message.point_step)*ii + 16], sizeof(float));
+				memcpy(&rbytes, &message.data[int(message.point_step)*ii + 20], sizeof(int));
+				//std::cout << "message.point_step: " << message.point_step << " message.row_step " << message.row_step << " message.height " << message.height << " message.width " << message.width << std::endl;
+				//std::cout << "Xb: " << xbytes << " Yb: " << ybytes << " Zb: " << zbytes << " Ib: " << ibytes << " Rb: " << rbytes << std::endl;
+				//save to PointCloudWithIntensitiesRings
+				memcpy(&x, &xbytes, sizeof(float));
+				memcpy(&y, &ybytes, sizeof(float));
+				memcpy(&z, &zbytes, sizeof(float));
+      				point_cloud.points.emplace_back(x, y, z, 0.f);
+				memcpy(&i, &ibytes, sizeof(float));
+      				point_cloud.intensities.push_back(i);
+				memcpy(&r, &rbytes, sizeof(int));
+      				point_cloud.rings.push_back(r);
+				//std::cout << "X: " << x << " Y: " << y << " Z: " << z << " I: " << i << " R: " << r << std::endl;
+    			}
+		}else {
+			//intensity & NO ring
+			//read bytes of next point
+			for (int ii=0;ii<pointCount;ii++) {
+				memcpy(&xbytes, &message.data[int(message.point_step)*ii], sizeof(float));
+				memcpy(&ybytes, &message.data[int(message.point_step)*ii + 4], sizeof(float));
+				memcpy(&zbytes, &message.data[int(message.point_step)*ii + 8], sizeof(float));
+				memcpy(&ibytes, &message.data[int(message.point_step)*ii + 16], sizeof(float));
+				memcpy(&rbytes, &message.data[int(message.point_step)*ii + 20], sizeof(int));
+				//save to PointCloudWithIntensitiesRings
+				memcpy(&x, &xbytes, sizeof(float));
+				memcpy(&y, &ybytes, sizeof(float));
+				memcpy(&z, &zbytes, sizeof(float));
+      				point_cloud.points.emplace_back(x, y, z, 0.f);
+				memcpy(&i, &ibytes, sizeof(float));
+      				point_cloud.intensities.push_back(i);
+				//NO ring
+      				point_cloud.rings.push_back(0);
+			}
+		}
+	} else {
+		// NO intensity & NO ring
+		// If we don't have an intensity field, just copy XYZ and fill in
+		// 1.0.
+		for (int ii=0;ii<pointCount;ii++) {
+			//read bytes of next point
+			memcpy(&xbytes, &message.data[int(message.point_step)*ii], sizeof(float));
+			memcpy(&ybytes, &message.data[int(message.point_step)*ii + 4], sizeof(float));
+			memcpy(&zbytes, &message.data[int(message.point_step)*ii + 8], sizeof(float));
+			memcpy(&ibytes, &message.data[int(message.point_step)*ii + 16], sizeof(float));
+			memcpy(&rbytes, &message.data[int(message.point_step)*ii + 20], sizeof(int));
+			//save to PointCloudWithIntensitiesRings
+			memcpy(&x, &xbytes, sizeof(float));
+			memcpy(&y, &ybytes, sizeof(float));
+			memcpy(&z, &zbytes, sizeof(float));
+      			point_cloud.points.emplace_back(x, y, z, 0.f);
+			//NO intensity
+      			point_cloud.intensities.push_back(1.0);
+			//NO ring
+      			point_cloud.rings.push_back(0);
+    		}
+  	}
+	return point_cloud;
+}
+*/
 Rigid3d ToRigid3d(const geometry_msgs::TransformStamped& transform) {
   return Rigid3d(ToEigen(transform.transform.translation),
                  ToEigen(transform.transform.rotation));
