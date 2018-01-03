@@ -163,6 +163,7 @@ PointCloudWithIntensities ToPointCloudWithIntensities(
   return LaserScanToPointCloudWithIntensities(msg);
 }
 
+/*
 PointCloudWithIntensities ToPointCloudWithIntensities(
     const sensor_msgs::PointCloud2& message) {
   PointCloudWithIntensities point_cloud;
@@ -188,8 +189,56 @@ PointCloudWithIntensities ToPointCloudWithIntensities(
   }
   return point_cloud;
 }
+*/
 
 
+PointCloudWithIntensities ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
+	PointCloudWithIntensities point_cloud;
+	// We check for intensity field here to avoid run-time warnings if we pass in
+	// a PointCloud2 without intensity.
+	int pointCount=message.height * message.width;	//how many points in message
+	float x,y,z,i;					//coords,intensity, 
+	uint16_t r,e;					//ring, echo,
+	uint8_t red,green,blue;				//rgb
+	
+	for (int ii=0;ii<pointCount;ii++) {
+		//read bytes of next point
+		//xyz
+		memcpy(&x, &message.data[int(message.point_step)*ii], sizeof(float));
+		memcpy(&y, &message.data[int(message.point_step)*ii + 4], sizeof(float));
+		memcpy(&z, &message.data[int(message.point_step)*ii + 8], sizeof(float));
+      		point_cloud.points.emplace_back(x, y, z, 0.f);
+		//offset of data in bytes X + Y + Z + padding(4) 
+		int byteOffset = sizeof(float) + sizeof(float) + sizeof(float) + sizeof(float);
+		if (PointCloud2HasField(message, "intensity")){
+			memcpy(&i, &message.data[int(message.point_step)*ii + byteOffset], sizeof(float));
+      			point_cloud.intensities.push_back(i);
+			byteOffset = byteOffset + sizeof(float);
+			//std::cout << "i "  << " " << i << std::endl;
+		}
+		if (PointCloud2HasField(message, "ring")) {
+			memcpy(&r, &message.data[int(message.point_step)*ii + byteOffset], sizeof(uint16_t));
+      			point_cloud.rings.push_back(r);
+			byteOffset = byteOffset + sizeof(uint16_t);
+			//std::cout << "r "  << " " << r << std::endl;
+		}
+		//echo
+		memcpy(&e, &message.data[int(message.point_step)*ii + byteOffset], sizeof(uint16_t));
+		byteOffset = byteOffset + sizeof(uint16_t);
+		point_cloud.echoes.push_back(e);
+		//RGB
+		memcpy(&red, &message.data[int(message.point_step)*ii + byteOffset], sizeof(uint8_t));
+		point_cloud.reds.push_back(red);
+		byteOffset = byteOffset + sizeof(uint8_t);
+		memcpy(&green, &message.data[int(message.point_step)*ii + byteOffset], sizeof(uint8_t));
+		point_cloud.greens.push_back(green);
+		byteOffset = byteOffset + sizeof(uint8_t);
+		memcpy(&blue, &message.data[int(message.point_step)*ii + byteOffset], sizeof(uint8_t));
+		point_cloud.blues.push_back(blue);
+		byteOffset = byteOffset + sizeof(uint8_t);
+	}
+	return point_cloud;
+}
 /*
 PointCloudWithIntensities ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
 	PointCloudWithIntensities point_cloud;
