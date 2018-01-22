@@ -142,22 +142,12 @@ void WriteCustomBinaryPlyTrajectory(carto::mapping::proto::Trajectory& trajector
 
 
 
-void Run(const std::string& pose_graph_filename,
-         const std::vector<std::string>& bag_filenames,
-         const std::string& configuration_directory,
-         const std::string& configuration_basename,
-         const std::string& urdf_filename,
-         const std::string& output_file_prefix) {
+void Run(const std::string& pose_graph_filename) {
 
   carto::io::ProtoStreamReader reader(pose_graph_filename);
   carto::mapping::proto::PoseGraph pose_graph_proto;
   CHECK(reader.ReadProto(&pose_graph_proto));
-  CHECK_EQ(pose_graph_proto.trajectory_size(), bag_filenames.size())
-      << "Pose graphs contains " << pose_graph_proto.trajectory_size()
-      << " trajectories while " << bag_filenames.size()
-      << " bags were provided. This tool requires one bag for each "
-         "trajectory in the same order as the correponding trajectories in the "
-         "pose graph proto.";
+
 
   // This vector must outlive the pipeline.
   std::vector<::cartographer::mapping::proto::Trajectory> all_trajectories(
@@ -197,18 +187,10 @@ int main(int argc, char** argv) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  CHECK(!FLAGS_configuration_directory.empty())
-      << "-configuration_directory is missing.";
-  CHECK(!FLAGS_configuration_basename.empty())
-      << "-configuration_basename is missing.";
-  CHECK(!FLAGS_bag_filenames.empty()) << "-bag_filenames is missing.";
   CHECK(!FLAGS_pose_graph_filename.empty())
       << "-pose_graph_filename is missing.";
 
 
   ::cartographer_ros::Run(
-      FLAGS_pose_graph_filename,
-      cartographer_ros::SplitString(FLAGS_bag_filenames, ','),
-      FLAGS_configuration_directory, FLAGS_configuration_basename,
-      FLAGS_urdf_filename, FLAGS_output_file_prefix);
+      FLAGS_pose_graph_filename);
 }
