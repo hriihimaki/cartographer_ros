@@ -204,9 +204,9 @@ ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
   return std::make_tuple(point_cloud, FromRos(message.header.stamp));
 }
 */
-
-
-PointCloudWithIntensities ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
+std::tuple<::cartographer::sensor::PointCloudWithIntensities,
+           ::cartographer::common::Time>
+ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
 	PointCloudWithIntensities point_cloud;
 	// We check for intensity field here to avoid run-time warnings if we pass in
 	// a PointCloud2 without intensity.
@@ -251,8 +251,9 @@ PointCloudWithIntensities ToPointCloudWithIntensities(const sensor_msgs::PointCl
 		point_cloud.blues.push_back(blue);
 		byteOffset = byteOffset + sizeof(uint8_t);
 	}
-	return point_cloud;
+	return std::make_tuple(point_cloud, FromRos(message.header.stamp));
 }
+
 /*
 PointCloudWithIntensities ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
 	PointCloudWithIntensities point_cloud;
