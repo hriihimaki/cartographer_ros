@@ -209,17 +209,6 @@ void Run(const std::string& pose_graph_filename,
   std::vector<std::unique_ptr<carto::io::PointsProcessor>> pipeline =
       builder.CreatePipeline(
           lua_parameter_dictionary.GetDictionary("pipeline").get());
-  
-  //check if .las export is chosen
-  std::size_t las_found = code.find(std::string("write_las"));
-  
-  if(las_found!=std::string::npos){
-	pipeline.back()->outputName = bag_filenames.front() + std::string(".las");
-  	std::cout << ".las export is chosen " << las_found << ", output name: " << pipeline.back()->outputName << std::endl; 
-  }
-  
-  //.las filename
-  //pipeline.back()->outputName = bag_filenames.front() + std::string(".las");
 
   const std::string tracking_frame =
       lua_parameter_dictionary.GetString("tracking_frame");
@@ -255,31 +244,6 @@ void Run(const std::string& pose_graph_filename,
       // the assumption of higher frequency tf this should ensure that tf can
       // always interpolate.
       const ::ros::Duration kDelay(1.);
-      
-      //------for las export------
-      bool usingLas = false;
-      if(pipeline.back()->outputName.compare(std::string("NaN")) != 0){
-	usingLas = true;
-      }
-      //open .las file
-      LASwriteOpener laswriteopener;
-      laswriteopener.set_file_name(pipeline.back()->outputName.c_str());
-      // init header
-      LASheader lasheader;
-      lasheader.x_scale_factor = 0.001;
-      lasheader.y_scale_factor = 0.001;
-      lasheader.z_scale_factor = 0.001;
-      lasheader.x_offset = 0.0;
-      lasheader.y_offset = 0.0;
-      lasheader.z_offset = 0.0;
-      lasheader.point_data_format = 3;
-      lasheader.point_data_record_length = 34;
-      // init point 
-      LASpoint laspoint;
-      laspoint.init(&lasheader, lasheader.point_data_format, lasheader.point_data_record_length, 0);
-      //open writing
-      LASwriter* laswriter = laswriteopener.open(&lasheader);
-      //-----------------------------
 
       for (const rosbag::MessageInstance& message : view) {
         if (FLAGS_use_bag_transforms && message.isType<tf2_msgs::TFMessage>()) {
@@ -315,65 +279,6 @@ void Run(const std::string& pose_graph_filename,
                 tracking_frame, tf_buffer, transform_interpolation_buffer);
           }
           if (points_batch != nullptr) {
-	    //export las
-	  if(usingLas){
-		bool has_colors_ = !points_batch->colors.empty();
-		//std::cout << has_colors_ << std::endl;
-		for(size_t ii = 0; ii<points_batch->points.size(); ii++){
-			// populate the point
-			//coordinates
-			double xdouble = points_batch->points[ii][0];
-			I32 x;
-			if (xdouble >= lasheader.x_scale_factor){
-				x=(I32)((xdouble-lasheader.x_scale_factor)/lasheader.x_scale_factor+0.5);
-			}else{
-				x=(I32)((xdouble-lasheader.x_scale_factor)/lasheader.x_scale_factor-0.5);
-			}
-    			laspoint.set_X(x);
-
-			double ydouble = points_batch->points[ii][1];
-			I32 y;
-			if (ydouble >= lasheader.y_scale_factor){
-				y=(I32)((ydouble-lasheader.y_scale_factor)/lasheader.y_scale_factor+0.5);
-			}else{
-				y=(I32)((ydouble-lasheader.y_scale_factor)/lasheader.y_scale_factor-0.5);
-			}
-    			laspoint.set_Y(y);
-
-			double zdouble = points_batch->points[ii][2];
-			I32 z;
-			if (zdouble >= lasheader.z_scale_factor){
-				z=(I32)((zdouble-lasheader.z_scale_factor)/lasheader.z_scale_factor+0.5);
-			}else{
-				z=(I32)((zdouble-lasheader.z_scale_factor)/lasheader.z_scale_factor-0.5);
-			}
-    			laspoint.set_Z(z);
-			//intensity
-    			laspoint.set_intensity((U16)points_batch->intensities[ii]);
-			//std::cout << "points_batch->intensities[ii] "  << " " << points_batch->intensities[ii] << std::endl;
-			//time
-    			//laspoint.set_gps_time((F64)ToUniversalDouble(points_batch->start_time));
-			laspoint.set_gps_time((F64)points_batch->start_time_unix);
-			//ring as scan direction
-			laspoint.set_scan_angle_rank((I8)points_batch->rings[ii]);
-			//echo
-			laspoint.set_return_number((U8)points_batch->echoes[ii]);
-			//rgb + nir
-			if(has_colors_){
-				//std::cout << points_batch->colors[ii][0] << " " << points_batch->colors[ii][0] << std::endl;
-				//U16 rgb[4] = { (U16)points_batch->colors[ii][0] * (U16)256, (U16)points_batch->colors[ii][1] * (U16)256, (U16)points_batch->colors[ii][2] * (U16)256, (U16)0 };
-				U16 rgb[4] = { (U16)((double)points_batch->colors[ii][0]*256.0), (U16)((double)points_batch->colors[ii][1]*256.0), (U16)((double)points_batch->colors[ii][2]*256.0), (U16)0 };
-				laspoint.set_RGB(rgb);
-			}
-
-			
-			//std::cout << points_batch->colors[ii][0] << " " << points_batch->colors[ii][1] << std::endl;
-    			// write the point
-    			laswriter->write_point(&laspoint);
-    			// add it to the inventory
-    			laswriter->update_inventory(&laspoint);
-		}
-	    }
 	    //process point processors
             points_batch->trajectory_id = trajectory_id;
             pipeline.back()->Process(std::move(points_batch));
@@ -386,13 +291,6 @@ void Run(const std::string& pose_graph_filename,
             << " of " << duration_in_seconds << " bag time seconds...";
       }
       bag.close();
-      
-      if(usingLas){
-      	// update the header
-      	laswriter->update_header(&lasheader, TRUE);
-      	// close the writer
-      	I64 total_bytes = laswriter->close();
-      }
     }
   } while (pipeline.back()->Flush() ==
            carto::io::PointsProcessor::FlushResult::kRestartStream);
