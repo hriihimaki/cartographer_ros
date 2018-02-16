@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 The Cartographer Authors
+ * Copyright 2018 The Cartographer Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,26 +14,29 @@
  * limitations under the License.
  */
 
-#include "cartographer/mapping/map_builder.h"
+#include "cartographer_grpc/mapping/map_builder_stub.h"
 #include "cartographer_ros/offline_node.h"
 #include "cartographer_ros/ros_log_sink.h"
 #include "gflags/gflags.h"
 #include "ros/ros.h"
 
+DEFINE_string(server_address, "localhost:50051",
+              "gRPC server address to "
+              "stream the sensor data to.");
+
 int main(int argc, char** argv) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  ::ros::init(argc, argv, "cartographer_offline_node");
+  ::ros::init(argc, argv, "cartographer_grpc_offline_node");
   ::ros::start();
 
   cartographer_ros::ScopedRosLogSink ros_log_sink;
 
   const cartographer_ros::MapBuilderFactory map_builder_factory =
-      [](const ::cartographer::mapping::proto::MapBuilderOptions&
-             map_builder_options) {
+      [](const ::cartographer::mapping::proto::MapBuilderOptions&) {
         return ::cartographer::common::make_unique<
-            ::cartographer::mapping::MapBuilder>(map_builder_options);
+            ::cartographer_grpc::mapping::MapBuilderStub>(FLAGS_server_address);
       };
 
   cartographer_ros::RunOfflineNode(map_builder_factory);
