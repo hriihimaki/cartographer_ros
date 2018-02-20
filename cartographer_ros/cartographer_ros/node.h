@@ -19,12 +19,14 @@
 
 #include <map>
 #include <memory>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include "cartographer/common/fixed_ratio_sampler.h"
 #include "cartographer/common/mutex.h"
+#include "cartographer/mapping/map_builder_interface.h"
 #include "cartographer/mapping/pose_extrapolator.h"
 #include "cartographer_ros/map_builder_bridge.h"
 #include "cartographer_ros/node_constants.h"
@@ -38,7 +40,13 @@
 #include "cartographer_ros_msgs/SubmapQuery.h"
 #include "cartographer_ros_msgs/TrajectoryOptions.h"
 #include "cartographer_ros_msgs/WriteState.h"
+#include "nav_msgs/Odometry.h"
 #include "ros/ros.h"
+#include "sensor_msgs/Imu.h"
+#include "sensor_msgs/LaserScan.h"
+#include "sensor_msgs/MultiEchoLaserScan.h"
+#include "sensor_msgs/NavSatFix.h"
+#include "sensor_msgs/PointCloud2.h"
 #include "tf2_ros/transform_broadcaster.h"
 
 namespace cartographer_ros {
@@ -46,7 +54,9 @@ namespace cartographer_ros {
 // Wires up ROS topics to SLAM.
 class Node {
  public:
-  Node(const NodeOptions& node_options, tf2_ros::Buffer* tf_buffer);
+  Node(const NodeOptions& node_options,
+       std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder,
+       tf2_ros::Buffer* tf_buffer);
   ~Node();
 
   Node(const Node&) = delete;
@@ -64,18 +74,26 @@ class Node {
   // Starts the first trajectory with the default topics.
   void StartTrajectoryWithDefaultTopics(const TrajectoryOptions& options);
 
-  // Compute the default topics for the given 'options'.
-  std::unordered_set<std::string> ComputeDefaultTopics(
-      const TrajectoryOptions& options);
+  // Returns unique SensorIds for multiple input bag files based on
+  // their TrajectoryOptions.
+  // 'SensorId::id' is the expected ROS topic name.
+  std::vector<
+      std::set<::cartographer::mapping::TrajectoryBuilderInterface::SensorId>>
+  ComputeDefaultSensorIdsForMultipleBags(
+      const std::vector<TrajectoryOptions>& bags_options) const;
 
   // Adds a trajectory for offline processing, i.e. not listening to topics.
   int AddOfflineTrajectory(
-      const std::unordered_set<std::string>& expected_sensor_ids,
+      const std::set<
+          cartographer::mapping::TrajectoryBuilderInterface::SensorId>&
+          expected_sensor_ids,
       const TrajectoryOptions& options);
 
   // The following functions handle adding sensor data to a trajectory.
   void HandleOdometryMessage(int trajectory_id, const std::string& sensor_id,
                              const nav_msgs::Odometry::ConstPtr& msg);
+  void HandleNavSatFixMessage(int trajectory_id, const std::string& sensor_id,
+                              const sensor_msgs::NavSatFix::ConstPtr& msg);
   void HandleImuMessage(int trajectory_id, const std::string& sensor_id,
                         const sensor_msgs::Imu::ConstPtr& msg);
   void HandleLaserScanMessage(int trajectory_id, const std::string& sensor_id,
@@ -116,10 +134,12 @@ class Node {
       cartographer_ros_msgs::FinishTrajectory::Response& response);
   bool HandleWriteState(cartographer_ros_msgs::WriteState::Request& request,
                         cartographer_ros_msgs::WriteState::Response& response);
-  // Returns the set of topic names we want to subscribe to.
-  std::unordered_set<std::string> ComputeExpectedTopics(
+  // Returns the set of SensorIds expected for a trajectory.
+  // 'SensorId::id' is the expected ROS topic name.
+  std::set<::cartographer::mapping::TrajectoryBuilderInterface::SensorId>
+  ComputeExpectedSensorIds(
       const TrajectoryOptions& options,
-      const cartographer_ros_msgs::SensorTopics& topics);
+      const cartographer_ros_msgs::SensorTopics& topics) const;
   int AddTrajectory(const TrajectoryOptions& options,
                     const cartographer_ros_msgs::SensorTopics& topics);
   void LaunchSubscribers(const TrajectoryOptions& options,
@@ -153,15 +173,18 @@ class Node {
   ::ros::Publisher scan_matched_point_cloud_publisher_;
 
   struct TrajectorySensorSamplers {
-    TrajectorySensorSamplers(double rangefinder_sampling_ratio,
-                             double odometry_sampling_ratio,
-                             double imu_sampling_ratio)
+    TrajectorySensorSamplers(const double rangefinder_sampling_ratio,
+                             const double odometry_sampling_ratio,
+                             const double fixed_frame_pose_sampling_ratio,
+                             const double imu_sampling_ratio)
         : rangefinder_sampler(rangefinder_sampling_ratio),
           odometry_sampler(odometry_sampling_ratio),
+          fixed_frame_pose_sampler(fixed_frame_pose_sampling_ratio),
           imu_sampler(imu_sampling_ratio) {}
 
     ::cartographer::common::FixedRatioSampler rangefinder_sampler;
     ::cartographer::common::FixedRatioSampler odometry_sampler;
+    ::cartographer::common::FixedRatioSampler fixed_frame_pose_sampler;
     ::cartographer::common::FixedRatioSampler imu_sampler;
   };
 

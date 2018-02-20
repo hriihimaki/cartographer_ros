@@ -16,6 +16,9 @@
 
 #include "cartographer_ros/msg_conversion.h"
 
+#include <cmath>
+
+#include "cartographer/common/math.h"
 #include "cartographer/common/port.h"
 #include "cartographer/common/time.h"
 #include "cartographer/transform/proto/transform.pb.h"
@@ -91,8 +94,8 @@ float GetFirstEcho(const sensor_msgs::LaserEcho& echo) {
 
 // For sensor_msgs::LaserScan and sensor_msgs::MultiEchoLaserScan.
 template <typename LaserMessageType>
-PointCloudWithIntensities LaserScanToPointCloudWithIntensities(
-    const LaserMessageType& msg) {
+std::tuple<PointCloudWithIntensities, ::cartographer::common::Time>
+LaserScanToPointCloudWithIntensities(const LaserMessageType& msg) {
   CHECK_GE(msg.range_min, 0.f);
   CHECK_GE(msg.range_max, msg.range_min);
   if (msg.angle_increment > 0.f) {
@@ -124,7 +127,15 @@ PointCloudWithIntensities LaserScanToPointCloudWithIntensities(
     }
     angle += msg.angle_increment;
   }
-  return point_cloud;
+  ::cartographer::common::Time timestamp = FromRos(msg.header.stamp);
+  if (!point_cloud.points.empty()) {
+    const double duration = point_cloud.points.back()[3];
+    timestamp += cartographer::common::FromSeconds(duration);
+    for (auto& point : point_cloud.points) {
+      point[3] -= duration;
+    }
+  }
+  return std::make_tuple(point_cloud, timestamp);
 }
 
 bool PointCloud2HasField(const sensor_msgs::PointCloud2& pc2,
@@ -153,19 +164,22 @@ sensor_msgs::PointCloud2 ToPointCloud2Message(
   return msg;
 }
 
-PointCloudWithIntensities ToPointCloudWithIntensities(
-    const sensor_msgs::LaserScan& msg) {
+std::tuple<::cartographer::sensor::PointCloudWithIntensities,
+           ::cartographer::common::Time>
+ToPointCloudWithIntensities(const sensor_msgs::LaserScan& msg) {
   return LaserScanToPointCloudWithIntensities(msg);
 }
 
-PointCloudWithIntensities ToPointCloudWithIntensities(
-    const sensor_msgs::MultiEchoLaserScan& msg) {
+std::tuple<::cartographer::sensor::PointCloudWithIntensities,
+           ::cartographer::common::Time>
+ToPointCloudWithIntensities(const sensor_msgs::MultiEchoLaserScan& msg) {
   return LaserScanToPointCloudWithIntensities(msg);
 }
 
 /*
-PointCloudWithIntensities ToPointCloudWithIntensities(
-    const sensor_msgs::PointCloud2& message) {
+std::tuple<::cartographer::sensor::PointCloudWithIntensities,
+           ::cartographer::common::Time>
+ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
   PointCloudWithIntensities point_cloud;
   // We check for intensity field here to avoid run-time warnings if we pass in
   // a PointCloud2 without intensity.
@@ -187,12 +201,12 @@ PointCloudWithIntensities ToPointCloudWithIntensities(
       point_cloud.intensities.push_back(1.0);
     }
   }
-  return point_cloud;
+  return std::make_tuple(point_cloud, FromRos(message.header.stamp));
 }
 */
-
-
-PointCloudWithIntensities ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
+std::tuple<::cartographer::sensor::PointCloudWithIntensities,
+           ::cartographer::common::Time>
+ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
 	PointCloudWithIntensities point_cloud;
 	// We check for intensity field here to avoid run-time warnings if we pass in
 	// a PointCloud2 without intensity.
@@ -237,8 +251,9 @@ PointCloudWithIntensities ToPointCloudWithIntensities(const sensor_msgs::PointCl
 		point_cloud.blues.push_back(blue);
 		byteOffset = byteOffset + sizeof(uint8_t);
 	}
-	return point_cloud;
+	return std::make_tuple(point_cloud, FromRos(message.header.stamp));
 }
+
 /*
 PointCloudWithIntensities ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
 	PointCloudWithIntensities point_cloud;
@@ -370,6 +385,38 @@ geometry_msgs::Point ToGeometryMsgPoint(const Eigen::Vector3d& vector3d) {
   point.y = vector3d.y();
   point.z = vector3d.z();
   return point;
+}
+
+Eigen::Vector3d LatLongAltToEcef(const double latitude, const double longitude,
+                                 const double altitude) {
+  // https://en.wikipedia.org/wiki/Geographic_coordinate_conversion#From_geodetic_to_ECEF_coordinates
+  constexpr double a = 6378137.;  // semi-major axis, equator to center.
+  constexpr double f = 1. / 298.257223563;
+  constexpr double b = a * (1. - f);  // semi-minor axis, pole to center.
+  constexpr double a_squared = a * a;
+  constexpr double b_squared = b * b;
+  constexpr double e_squared = (a_squared - b_squared) / a_squared;
+  const double sin_phi = std::sin(cartographer::common::DegToRad(latitude));
+  const double cos_phi = std::cos(cartographer::common::DegToRad(latitude));
+  const double sin_lambda = std::sin(cartographer::common::DegToRad(longitude));
+  const double cos_lambda = std::cos(cartographer::common::DegToRad(longitude));
+  const double N = a / std::sqrt(1 - e_squared * sin_phi * sin_phi);
+  const double x = (N + altitude) * cos_phi * cos_lambda;
+  const double y = (N + altitude) * cos_phi * sin_lambda;
+  const double z = (b_squared / a_squared * N + altitude) * sin_phi;
+
+  return Eigen::Vector3d(x, y, z);
+}
+
+cartographer::transform::Rigid3d ComputeLocalFrameFromLatLong(
+    const double latitude, const double longitude) {
+  const Eigen::Vector3d translation = LatLongAltToEcef(latitude, longitude, 0.);
+  const Eigen::Quaterniond rotation =
+      Eigen::AngleAxisd(cartographer::common::DegToRad(latitude - 90.),
+                        Eigen::Vector3d::UnitY()) *
+      Eigen::AngleAxisd(cartographer::common::DegToRad(-longitude),
+                        Eigen::Vector3d::UnitZ());
+  return cartographer::transform::Rigid3d(rotation * -translation, rotation);
 }
 
 }  // namespace cartographer_ros

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 The Cartographer Authors
+ * Copyright 2018 The Cartographer Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,27 +14,25 @@
  * limitations under the License.
  */
 
-#ifndef CARTOGRAPHER_ROS_SUBMAP_H_
-#define CARTOGRAPHER_ROS_SUBMAP_H_
+#ifndef CARTOGRAPHER_ROS_OFFLINE_NODE_H_
+#define CARTOGRAPHER_ROS_OFFLINE_NODE_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "cartographer/io/image.h"
-#include "cartographer/io/submap_painter.h"
-#include "cartographer/mapping/id.h"
-#include "cartographer/transform/rigid_transform.h"
-#include "ros/ros.h"
+#include "cartographer/mapping/map_builder_interface.h"
+#include "cartographer_ros/node_options.h"
 
 namespace cartographer_ros {
 
-// Fetch 'submap_id' using the 'client' and returning the response or 'nullptr'
-// on error.
-std::unique_ptr<::cartographer::io::SubmapTextures> FetchSubmapTextures(
-    const ::cartographer::mapping::SubmapId& submap_id,
-    ros::ServiceClient* client);
+using MapBuilderFactory =
+    std::function<std::unique_ptr<::cartographer::mapping::MapBuilderInterface>(
+        const ::cartographer::mapping::proto::MapBuilderOptions&)>;
+
+void RunOfflineNode(const MapBuilderFactory& map_builder_factory);
 
 }  // namespace cartographer_ros
 
-#endif  // CARTOGRAPHER_ROS_SUBMAP_H_
+#endif  // CARTOGRAPHER_ROS_OFFLINE_NODE_H_
