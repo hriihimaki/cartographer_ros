@@ -55,6 +55,7 @@ cartographer_ros_msgs::SensorTopics DefaultSensorTopics() {
   topics.imu_topic = kImuTopic;
   topics.odometry_topic = kOdometryTopic;
   topics.nav_sat_fix_topic = kNavSatFixTopic;
+  topics.landmark_topic = kLandmarkTopic;
   return topics;
 }
 
@@ -171,7 +172,8 @@ void Node::AddSensorSamplers(const int trajectory_id,
       std::piecewise_construct, std::forward_as_tuple(trajectory_id),
       std::forward_as_tuple(
           options.rangefinder_sampling_ratio, options.odometry_sampling_ratio,
-          options.fixed_frame_pose_sampling_ratio, options.imu_sampling_ratio));
+          options.fixed_frame_pose_sampling_ratio, options.imu_sampling_ratio,
+          options.landmarks_sampling_ratio));
 }
 
 void Node::PublishTrajectoryStates(const ::ros::WallTimerEvent& timer_event) {
@@ -184,21 +186,24 @@ void Node::PublishTrajectoryStates(const ::ros::WallTimerEvent& timer_event) {
     // frequency, and republishing it would be computationally wasteful.
     if (trajectory_state.local_slam_data->time !=
         extrapolator.GetLastPoseTime()) {
-      // TODO(gaschler): Consider using other message without time information.
-      carto::sensor::TimedPointCloud point_cloud;
-      point_cloud.reserve(
-          trajectory_state.local_slam_data->range_data_in_local.returns.size());
-      for (const Eigen::Vector3f point :
-           trajectory_state.local_slam_data->range_data_in_local.returns) {
-        Eigen::Vector4f point_time;
-        point_time << point, 0.f;
-        point_cloud.push_back(point_time);
+      if (scan_matched_point_cloud_publisher_.getNumSubscribers() > 0) {
+        // TODO(gaschler): Consider using other message without time
+        // information.
+        carto::sensor::TimedPointCloud point_cloud;
+        point_cloud.reserve(trajectory_state.local_slam_data
+                                ->range_data_in_local.returns.size());
+        for (const Eigen::Vector3f point :
+             trajectory_state.local_slam_data->range_data_in_local.returns) {
+          Eigen::Vector4f point_time;
+          point_time << point, 0.f;
+          point_cloud.push_back(point_time);
+        }
+        scan_matched_point_cloud_publisher_.publish(ToPointCloud2Message(
+            carto::common::ToUniversal(trajectory_state.local_slam_data->time),
+            node_options_.map_frame,
+            carto::sensor::TransformTimedPointCloud(
+                point_cloud, trajectory_state.local_to_map.cast<float>())));
       }
-      scan_matched_point_cloud_publisher_.publish(ToPointCloud2Message(
-          carto::common::ToUniversal(trajectory_state.local_slam_data->time),
-          node_options_.map_frame,
-          carto::sensor::TransformTimedPointCloud(
-              point_cloud, trajectory_state.local_to_map.cast<float>())));
       extrapolator.AddPose(trajectory_state.local_slam_data->time,
                            trajectory_state.local_slam_data->local_pose);
     }
@@ -255,8 +260,8 @@ void Node::PublishTrajectoryStates(const ::ros::WallTimerEvent& timer_event) {
 
 void Node::PublishTrajectoryNodeList(
     const ::ros::WallTimerEvent& unused_timer_event) {
-  carto::common::MutexLocker lock(&mutex_);
   if (trajectory_node_list_publisher_.getNumSubscribers() > 0) {
+    carto::common::MutexLocker lock(&mutex_);
     trajectory_node_list_publisher_.publish(
         map_builder_bridge_.GetTrajectoryNodeList());
   }
@@ -264,8 +269,8 @@ void Node::PublishTrajectoryNodeList(
 
 void Node::PublishLandmarkPosesList(
     const ::ros::WallTimerEvent& unused_timer_event) {
-  carto::common::MutexLocker lock(&mutex_);
   if (landmark_poses_list_publisher_.getNumSubscribers() > 0) {
+    carto::common::MutexLocker lock(&mutex_);
     landmark_poses_list_publisher_.publish(
         map_builder_bridge_.GetLandmarkPosesList());
   }
@@ -273,8 +278,8 @@ void Node::PublishLandmarkPosesList(
 
 void Node::PublishConstraintList(
     const ::ros::WallTimerEvent& unused_timer_event) {
-  carto::common::MutexLocker lock(&mutex_);
   if (constraint_list_publisher_.getNumSubscribers() > 0) {
+    carto::common::MutexLocker lock(&mutex_);
     constraint_list_publisher_.publish(map_builder_bridge_.GetConstraintList());
   }
 }
@@ -318,7 +323,10 @@ Node::ComputeExpectedSensorIds(
     expected_topics.insert(
         SensorId{SensorType::FIXED_FRAME_POSE, topics.nav_sat_fix_topic});
   }
-
+  // Landmark is optional.
+  if (options.use_landmarks) {
+    expected_topics.insert(SensorId{SensorType::LANDMARK, kLandmarkTopic});
+  }
   return expected_topics;
 }
 
@@ -394,6 +402,14 @@ void Node::LaunchSubscribers(const TrajectoryOptions& options,
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<sensor_msgs::NavSatFix>(
              &Node::HandleNavSatFixMessage, trajectory_id, topic, &node_handle_,
+             this),
+         topic});
+  }
+  if (options.use_landmarks) {
+    std::string topic = topics.landmark_topic;
+    subscribers_[trajectory_id].push_back(
+        {SubscribeWithHandler<cartographer_ros_msgs::LandmarkList>(
+             &Node::HandleLandmarkMessage, trajectory_id, topic, &node_handle_,
              this),
          topic});
   }
@@ -603,6 +619,17 @@ void Node::HandleNavSatFixMessage(const int trajectory_id,
       ->HandleNavSatFixMessage(sensor_id, msg);
 }
 
+void Node::HandleLandmarkMessage(
+    const int trajectory_id, const std::string& sensor_id,
+    const cartographer_ros_msgs::LandmarkList::ConstPtr& msg) {
+  carto::common::MutexLocker lock(&mutex_);
+  if (!sensor_samplers_.at(trajectory_id).landmark_sampler.Pulse()) {
+    return;
+  }
+  map_builder_bridge_.sensor_bridge(trajectory_id)
+      ->HandleLandmarkMessage(sensor_id, msg);
+}
+
 void Node::HandleImuMessage(const int trajectory_id,
                             const std::string& sensor_id,
                             const sensor_msgs::Imu::ConstPtr& msg) {
@@ -657,9 +684,10 @@ void Node::SerializeState(const std::string& filename) {
       << "Could not write state.";
 }
 
-void Node::LoadMap(const std::string& map_filename) {
+void Node::LoadState(const std::string& state_filename,
+                     const bool load_frozen_state) {
   carto::common::MutexLocker lock(&mutex_);
-  map_builder_bridge_.LoadMap(map_filename);
+  map_builder_bridge_.LoadState(state_filename, load_frozen_state);
 }
 
 }  // namespace cartographer_ros
