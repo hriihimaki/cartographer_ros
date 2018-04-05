@@ -63,7 +63,7 @@ class MapBuilderBridge {
   MapBuilderBridge(const MapBuilderBridge&) = delete;
   MapBuilderBridge& operator=(const MapBuilderBridge&) = delete;
 
-  void LoadMap(const std::string& map_filename);
+  void LoadState(const std::string& state_filename, bool load_frozen_state);
   int AddTrajectory(
       const std::set<
           ::cartographer::mapping::TrajectoryBuilderInterface::SensorId>&
@@ -107,6 +107,7 @@ class MapBuilderBridge {
   // These are keyed with 'trajectory_id'.
   std::unordered_map<int, TrajectoryOptions> trajectory_options_;
   std::unordered_map<int, std::unique_ptr<SensorBridge>> sensor_bridges_;
+  std::unordered_map<int, size_t> trajectory_to_highest_marker_id_;
 };
 
 }  // namespace cartographer_ros
