@@ -162,7 +162,7 @@ void SensorBridge::HandleMultiEchoLaserScanMessage(
   HandleLaserScan(sensor_id, time, msg->header.frame_id, point_cloud);
 }
 
-void SensorBridge::HandlePointCloud2Message(
+/*void SensorBridge::HandlePointCloud2Message(
     const std::string& sensor_id,
     const sensor_msgs::PointCloud2::ConstPtr& msg) {
   pcl::PointCloud<pcl::PointXYZ> pcl_point_cloud;
@@ -170,6 +170,23 @@ void SensorBridge::HandlePointCloud2Message(
   carto::sensor::TimedPointCloud point_cloud;
   for (const auto& point : pcl_point_cloud) {
     point_cloud.emplace_back(point.x, point.y, point.z, 0.f);
+  }
+  HandleRangefinder(sensor_id, FromRos(msg->header.stamp), msg->header.frame_id,
+                    point_cloud);
+}*/
+
+void SensorBridge::HandlePointCloud2Message(
+    const std::string& sensor_id,
+    const sensor_msgs::PointCloud2::ConstPtr& msg) {
+  carto::sensor::TimedPointCloud point_cloud;
+  float x;float y;float z;float t;
+  size_t point_count = msg->height*msg->width;
+  for (size_t i = 0; i < point_count; ++i){
+    	memcpy(&x, &msg->data[i*size_t(msg->point_step)], sizeof(float));
+	memcpy(&y, &msg->data[i*size_t(msg->point_step) + 4], sizeof(float));
+	memcpy(&z, &msg->data[i*size_t(msg->point_step) + 8], sizeof(float));
+	memcpy(&t, &msg->data[i*size_t(msg->point_step) + 12], sizeof(float));
+	point_cloud.emplace_back(x, y, z, t);
   }
   HandleRangefinder(sensor_id, FromRos(msg->header.stamp), msg->header.frame_id,
                     point_cloud);
