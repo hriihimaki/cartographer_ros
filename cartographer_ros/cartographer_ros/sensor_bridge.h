@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef CARTOGRAPHER_ROS_SENSOR_BRIDGE_H_
-#define CARTOGRAPHER_ROS_SENSOR_BRIDGE_H_
+#ifndef CARTOGRAPHER_ROS_CARTOGRAPHER_ROS_SENSOR_BRIDGE_H
+#define CARTOGRAPHER_ROS_CARTOGRAPHER_ROS_SENSOR_BRIDGE_H
 
 #include <memory>
 
@@ -85,6 +85,8 @@ class SensorBridge {
                          const ::cartographer::sensor::TimedPointCloud& ranges);
 
   const int num_subdivisions_per_laser_scan_;
+  std::map<std::string, cartographer::common::Time>
+      sensor_to_previous_subdivision_time_;
   const TfBridge tf_bridge_;
   ::cartographer::mapping::TrajectoryBuilderInterface* const
       trajectory_builder_;
@@ -95,4 +97,4 @@ class SensorBridge {
 
 }  // namespace cartographer_ros
 
-#endif  // CARTOGRAPHER_ROS_SENSOR_BRIDGE_H_
+#endif  // CARTOGRAPHER_ROS_CARTOGRAPHER_ROS_SENSOR_BRIDGE_H
