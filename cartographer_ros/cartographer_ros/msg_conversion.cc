@@ -219,6 +219,7 @@ ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
 	float x,y,z,i;					//coords,intensity, 
 	uint16_t r,e;					//ring, echo,
 	uint8_t red,green,blue;				//rgb
+	uint16_t numecho;
 	
 	for (int ii=0;ii<pointCount;ii++) {
 		//read bytes of next point
@@ -255,6 +256,11 @@ ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
 		memcpy(&blue, &message.data[int(message.point_step)*ii + byteOffset], sizeof(uint8_t));
 		point_cloud.blues.push_back(blue);
 		byteOffset = byteOffset + sizeof(uint8_t);
+		byteOffset = byteOffset + sizeof(uint8_t);
+                //number of echoes
+		memcpy(&numecho, &message.data[int(message.point_step)*ii + byteOffset], sizeof(uint16_t));
+		point_cloud.numechoes.push_back(numecho);
+		byteOffset = byteOffset + sizeof(uint16_t);
 	}
 	return std::make_tuple(point_cloud, FromRos(message.header.stamp));
 }

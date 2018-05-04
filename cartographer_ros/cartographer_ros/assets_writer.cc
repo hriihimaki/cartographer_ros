@@ -143,6 +143,8 @@ std::unique_ptr<carto::io::PointsBatch> HandleMessage(
     points_batch->rings.push_back((int8_t)point_cloud.rings[i]);
     //echoes
     points_batch->echoes.push_back(point_cloud.echoes[i]);
+    //number of echoes
+    points_batch->numechoes.push_back(point_cloud.numechoes[i]);
     //color
     //cartographer::io::FloatColor c = {{(float)point_cloud.reds[i]*(float)256, (float)point_cloud.greens[i]*(float)256, (float)point_cloud.blues[i]*(float)256}};
     cartographer::io::FloatColor c = {{(float)point_cloud.reds[i], (float)point_cloud.greens[i], (float)point_cloud.blues[i]}};
