@@ -104,6 +104,10 @@ std::unique_ptr<carto::common::LuaParameterDictionary> LoadLuaDictionary(
   return lua_parameter_dictionary;
 }
 
+std::unique_ptr<carto::io::PointsBatch> returnNull(){
+	return nullptr;
+}
+
 template <typename T>
 std::unique_ptr<carto::io::PointsBatch> HandleMessage(
     const T& message, const std::string& tracking_frame,
@@ -204,6 +208,10 @@ void AssetsWriter::Run(const std::string& configuration_directory,
   const std::string tracking_frame =
       lua_parameter_dictionary->GetString("tracking_frame");
 
+  //options for export control
+  double moved_away_threshold_meters = lua_parameter_dictionary->GetDouble("moved_away_threshold_meters");
+  carto::common::Time first_time, last_time;
+
   do {
     for (size_t trajectory_id = 0; trajectory_id < bag_filenames_.size();
          ++trajectory_id) {
@@ -227,6 +235,45 @@ void AssetsWriter::Run(const std::string& configuration_directory,
       const ::ros::Time begin_time = view.getBeginTime();
       const double duration_in_seconds =
           (view.getEndTime() - begin_time).toSec();
+	
+		/*
+		solve start time that the point cloud will be written to file
+		*/
+		//double moved_away_threshold_meters = 4.0;
+		first_time = transform_interpolation_buffer.earliest_time();
+		//take first position
+		Eigen::Vector3d first_position = transform_interpolation_buffer.Lookup(first_time).translation();
+		//find time position where scanner has moved more than threshold away from initial position
+		::ros::Time current_time_ros = ToRos(first_time) + ros::Duration(1);
+		Eigen::Vector3d current_position = transform_interpolation_buffer.Lookup(FromRos(current_time_ros)).translation();
+		while(double(Eigen::Vector3d(current_position - first_position).norm()) < moved_away_threshold_meters) {
+			//increase time by one second
+			current_time_ros = current_time_ros + ros::Duration(1);
+			//take new position
+			current_position = transform_interpolation_buffer.Lookup(FromRos(current_time_ros)).translation();
+		}
+		//set first time for point cloud output
+		LOG(INFO) << "Point cloud trimmed " << (current_time_ros - ros::Duration(1))-ToRos(first_time) << " seconds from the beginning";
+		::ros::Time first_time_ros = current_time_ros - ros::Duration(1);
+	
+		/*
+		solve end time that the point cloud will be written to file
+		*/
+		last_time = transform_interpolation_buffer.latest_time();
+		//take last position
+		Eigen::Vector3d last_position = transform_interpolation_buffer.Lookup(last_time).translation();
+		//find time position where scanner has moved more than threshold away from last position (going back in time)
+		::ros::Time current_time_ros_2 = ToRos(last_time) - ros::Duration(1);
+		Eigen::Vector3d current_position_2 = transform_interpolation_buffer.Lookup(FromRos(current_time_ros_2)).translation();
+		while(double(Eigen::Vector3d(current_position_2 - last_position).norm()) < moved_away_threshold_meters) {
+			//increase time by one second
+			current_time_ros_2 = current_time_ros_2 - ros::Duration(1);
+			//take new position
+			current_position_2 = transform_interpolation_buffer.Lookup(FromRos(current_time_ros_2)).translation();
+		}
+		//set last time for point cloud output
+		LOG(INFO) << "Point cloud trimmed " << ToRos(last_time) - (current_time_ros_2 + ros::Duration(1)) << " seconds from the end";
+		::ros::Time last_time_ros = current_time_ros_2 + ros::Duration(1);
 
       // We need to keep 'tf_buffer' small because it becomes very inefficient
       // otherwise. We make sure that tf_messages are published before any data
@@ -255,7 +302,10 @@ void AssetsWriter::Run(const std::string& configuration_directory,
               delayed_messages.front();
 
           std::unique_ptr<carto::io::PointsBatch> points_batch;
-          if (delayed_message.isType<sensor_msgs::PointCloud2>()) {
+	if (delayed_messages.front().getTime() < first_time_ros || delayed_messages.front().getTime() > last_time_ros ) {
+		//do not write points from beginning or end of walk
+		points_batch = returnNull();
+	} else if (delayed_message.isType<sensor_msgs::PointCloud2>()) {
             points_batch = HandleMessage(
                 *delayed_message.instantiate<sensor_msgs::PointCloud2>(),
                 tracking_frame, tf_buffer, transform_interpolation_buffer);
