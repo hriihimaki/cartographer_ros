@@ -59,7 +59,7 @@ rosbag::MessageInstance PlayableBag::GetNextMessage() {
   const rosbag::MessageInstance msg = buffered_messages_.front();
   buffered_messages_.pop_front();
   AdvanceUntilMessageAvailable();
-  if ((log_counter_++ % 10000) == 0) {
+  if ((log_counter_++ % 100000) == 0) {
     LOG(INFO) << "Processed " << (msg.getTime() - view_->getBeginTime()).toSec()
               << " of " << duration_in_seconds_ << " seconds of bag "
               << bag_filename_;
