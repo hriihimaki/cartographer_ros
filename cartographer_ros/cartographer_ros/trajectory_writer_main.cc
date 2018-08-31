@@ -154,7 +154,6 @@ void Run(const std::string& pose_graph_filename) {
   for (size_t i = 0; i < all_trajectories.size(); ++i) {
 	num_trajectory_points = num_trajectory_points + all_trajectories[i].node_size();
   }
-  std::cout << num_trajectory_points << std::endl;
   //file_writer
   std::string trajectoryFileName = pose_graph_filename + "_traj.ply";
   std::ofstream file_writer;
