@@ -297,7 +297,7 @@ ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
 		memcpy(&x, &message.data[int(message.point_step)*ii], sizeof(float));
 		memcpy(&y, &message.data[int(message.point_step)*ii + 4], sizeof(float));
 		memcpy(&z, &message.data[int(message.point_step)*ii + 8], sizeof(float));
-      		point_cloud.points.emplace_back(x, y, z, 0.f);
+		point_cloud.points.push_back({Eigen::Vector3f{x, y, z}, 0.f});
 		//offset of data in bytes X + Y + Z + padding(4) 
 		int byteOffset = sizeof(float) + sizeof(float) + sizeof(float) + sizeof(float);
 		if (PointCloud2HasField(message, "intensity")){
