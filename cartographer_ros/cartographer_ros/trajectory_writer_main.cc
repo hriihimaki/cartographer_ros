@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "cartographer/common/configuration_file_resolver.h"
-#include "cartographer/common/make_unique.h"
 #include "cartographer/common/math.h"
 #include "cartographer/io/file_writer.h"
 #include "cartographer/io/points_processor.h"
@@ -84,7 +83,6 @@ namespace carto = ::cartographer;
 
 
 void WriteCustomBinaryPlyHeader(int num_points, std::ofstream& file_writer) {
-
   std::ostringstream stream;
   stream << "ply\n"
          << "format binary_little_endian 1.0\n"
@@ -144,10 +142,7 @@ void WriteCustomBinaryPlyTrajectory(carto::mapping::proto::Trajectory& trajector
 
 void Run(const std::string& pose_graph_filename) {
 
-  carto::io::ProtoStreamReader reader(pose_graph_filename);
-  carto::mapping::proto::PoseGraph pose_graph_proto;
-  CHECK(reader.ReadProto(&pose_graph_proto));
-
+  carto::mapping::proto::PoseGraph pose_graph_proto = carto::io::DeserializePoseGraphFromFile(pose_graph_filename);
 
   // This vector must outlive the pipeline.
   std::vector<::cartographer::mapping::proto::Trajectory> all_trajectories(
@@ -159,7 +154,6 @@ void Run(const std::string& pose_graph_filename) {
   for (size_t i = 0; i < all_trajectories.size(); ++i) {
 	num_trajectory_points = num_trajectory_points + all_trajectories[i].node_size();
   }
-
   //file_writer
   std::string trajectoryFileName = pose_graph_filename + "_traj.ply";
   std::ofstream file_writer;
