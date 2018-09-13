@@ -112,10 +112,10 @@ std::unique_ptr<carto::io::PointsBatch> HandleMessage(
   points_batch->start_time = start_time;
   points_batch->frame_id = message.header.frame_id;
 
-  carto::sensor::PointCloudWithIntensities point_cloud;
+  carto::sensor::PointCloudWithIntensities2 point_cloud;
   carto::common::Time point_cloud_time;
   std::tie(point_cloud, point_cloud_time) =
-      ToPointCloudWithIntensities(message);
+      ToPointCloudWithIntensities2(message);
   CHECK_EQ(point_cloud.intensities.size(), point_cloud.points.size());
   CHECK_EQ(point_cloud.rings.size(), point_cloud.points.size());
 
