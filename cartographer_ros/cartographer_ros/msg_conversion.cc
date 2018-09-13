@@ -212,7 +212,18 @@ ToPointCloudWithIntensities(const sensor_msgs::MultiEchoLaserScan& msg) {
   return LaserScanToPointCloudWithIntensities(msg);
 }
 
-/*
+std::tuple<::cartographer::sensor::PointCloudWithIntensities2,
+           ::cartographer::common::Time>
+ToPointCloudWithIntensities2(const sensor_msgs::LaserScan& msg) {
+  return std::make_tuple(::cartographer::sensor::PointCloudWithIntensities2(), ::cartographer::common::Time());
+}
+
+std::tuple<::cartographer::sensor::PointCloudWithIntensities2,
+           ::cartographer::common::Time>
+ToPointCloudWithIntensities2(const sensor_msgs::MultiEchoLaserScan& msg) {
+  return std::make_tuple(::cartographer::sensor::PointCloudWithIntensities2(), ::cartographer::common::Time());
+}
+
 std::tuple<::cartographer::sensor::PointCloudWithIntensities,
            ::cartographer::common::Time>
 ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& msg) {
@@ -278,11 +289,11 @@ ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& msg) {
   }
   return std::make_tuple(point_cloud, timestamp);
 }
-*/
-std::tuple<::cartographer::sensor::PointCloudWithIntensities,
+
+std::tuple<::cartographer::sensor::PointCloudWithIntensities2,
            ::cartographer::common::Time>
-ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& message) {
-	PointCloudWithIntensities point_cloud;
+ToPointCloudWithIntensities2(const sensor_msgs::PointCloud2& message) {
+	cartographer::sensor::PointCloudWithIntensities2 point_cloud;
 	// We check for intensity field here to avoid run-time warnings if we pass in
 	// a PointCloud2 without intensity.
 	int pointCount=message.height * message.width;	//how many points in message
