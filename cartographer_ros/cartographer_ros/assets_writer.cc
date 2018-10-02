@@ -61,6 +61,51 @@ namespace {
 constexpr char kTfStaticTopic[] = "/tf_static";
 namespace carto = ::cartographer;
 
+void WriteCustomBinaryPlyHeader(int64_t num_points, std::ofstream& file_writer) {
+  std::ostringstream stream;
+  stream << "ply\n"
+         << "format binary_little_endian 1.0\n"
+         << "comment Point cloud hypnotized and smoothly lured from the basket by the almighty snake charmer: Kamikaze Viper\n"
+         << "element vertex " << std::setw(15) << std::setfill('0')
+         << num_points << "\n"
+         << "property float x\n"
+         << "property float y\n"
+         << "property float z\n"
+         << "property float x_rot\n"
+         << "property float y_rot\n"
+         << "property float z_rot\n"
+         << "property double time\n"
+         << "end_header\n";
+  std::string out = stream.str();
+  file_writer.write((char*)out.data(), out.size());
+}
+void write_one_node_ply(carto::transform::Rigid3f& pose, double& time, std::ofstream& file_writer){
+
+	//get xyz and rotations
+	float x,y,z,x_rot,y_rot,z_rot;
+
+	x = float(pose.translation().x());
+	y = float(pose.translation().y());
+	z = float(pose.translation().z());
+
+	auto euler = pose.rotation().toRotationMatrix().eulerAngles(0, 1, 2);
+	x_rot = float(euler[0]);
+	y_rot = float(euler[1]);
+	z_rot = float(euler[2]);
+
+	//write trajectory node to file
+	char buffer[32];
+	memcpy(buffer, &x, sizeof(float));
+	memcpy(buffer + 4, &y, sizeof(float));
+	memcpy(buffer + 8, &z, sizeof(float));
+	memcpy(buffer + 12, &x_rot, sizeof(float));
+	memcpy(buffer + 16, &y_rot, sizeof(float));
+	memcpy(buffer + 20, &z_rot, sizeof(float));
+	memcpy(buffer + 24, &time, sizeof(double));
+	//write to file
+	file_writer.write(buffer,32);
+}
+
 std::unique_ptr<carto::io::PointsProcessorPipelineBuilder>
 CreatePipelineBuilder(
     const std::vector<carto::mapping::proto::Trajectory>& trajectories,
@@ -151,6 +196,8 @@ std::unique_ptr<carto::io::PointsBatch> HandleMessage(
     //std::cout << std::setprecision(17) << "message.header.stamp.toSec() " << message.header.stamp.toSec() << " message.header.stamp " << message.header.stamp << std::endl;
     points_batch->start_time_unix = message.header.stamp.toSec();    // We use the last transform for the origin, which is approximately correct.
     points_batch->origin = sensor_to_map * Eigen::Vector3f::Zero();
+    //lidar pose
+    points_batch->lidar_pose = sensor_to_map;
   }
   if (points_batch->points.empty()) {
     return nullptr;
@@ -206,6 +253,16 @@ void AssetsWriter::Run(const std::string& configuration_directory,
   //options for export control
   double moved_away_threshold_meters = lua_parameter_dictionary->GetDouble("moved_away_threshold_meters");
   carto::common::Time first_time, last_time;
+
+  //open file for lidar trajectory
+  bool export_lidar_trajectory = lua_parameter_dictionary->GetBool("export_lidar_trajectory");
+  std::ofstream file_writer_lidar;
+  std::string trajectoryLidarFileName = bag_filenames_[0] + "_lidar_trajectory.ply";
+  int64_t num_trajectory_points = 0;
+  if(export_lidar_trajectory){
+  	file_writer_lidar.open(trajectoryLidarFileName, std::ios::out | std::ios::binary);
+  	WriteCustomBinaryPlyHeader(num_trajectory_points, file_writer_lidar);
+  }
 
   do {
     for (size_t trajectory_id = 0; trajectory_id < bag_filenames_.size();
@@ -304,6 +361,10 @@ void AssetsWriter::Run(const std::string& configuration_directory,
             points_batch = HandleMessage(
                 *delayed_message.instantiate<sensor_msgs::PointCloud2>(),
                 tracking_frame, tf_buffer, transform_interpolation_buffer);
+	    	if (points_batch != nullptr && export_lidar_trajectory){
+			num_trajectory_points = num_trajectory_points+1;
+	    		write_one_node_ply(points_batch->lidar_pose, points_batch->start_time_unix, file_writer_lidar);
+	    	}
           } else if (delayed_message
                          .isType<sensor_msgs::MultiEchoLaserScan>()) {
             points_batch = HandleMessage(
@@ -329,6 +390,12 @@ void AssetsWriter::Run(const std::string& configuration_directory,
     }
   } while (pipeline.back()->Flush() ==
            carto::io::PointsProcessor::FlushResult::kRestartStream);
+	   //overwrite write ply header with correct numebr of points
+	   if(export_lidar_trajectory){
+	   	file_writer_lidar.seekp(0);
+	   	WriteCustomBinaryPlyHeader(num_trajectory_points, file_writer_lidar);
+		file_writer_lidar.close();
+	   }
 }
 
 ::cartographer::io::FileWriterFactory AssetsWriter::CreateFileWriterFactory(
