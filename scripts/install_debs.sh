@@ -17,28 +17,19 @@
 set -o errexit
 set -o verbose
 
-# Install CMake 3.2 for Ubuntu Trusty and Debian Jessie.
+# Install CMake, Ninja, stow.
 sudo apt-get update
-sudo apt-get install lsb-release -y
-if [[ "$(lsb_release -sc)" = "trusty" ]]
+sudo apt-get install -y lsb-release cmake ninja-build stow
+
+# Install GMock library and header files for newer distributions.
+if [[ "$(lsb_release -sc)" = "focal" || "$(lsb_release -sc)" = "buster" ]]
 then
-  sudo apt-get install cmake3 -y
-elif [[ "$(lsb_release -sc)" = "jessie" ]]
-then
-  sudo sh -c "echo 'deb http://ftp.debian.org/debian jessie-backports main' >> /etc/apt/sources.list"
-  sudo apt-get update
-  sudo apt-get -t jessie-backports install cmake -y
-else
-  sudo apt-get install cmake -y
+  sudo apt-get install -y libgmock-dev
 fi
 
 . /opt/ros/${ROS_DISTRO}/setup.sh
 
 cd catkin_ws
-
-# Install Ninja.
-apt-get update
-apt-get install -y ninja-build
 
 # Install rosdep dependencies.
 rosdep update

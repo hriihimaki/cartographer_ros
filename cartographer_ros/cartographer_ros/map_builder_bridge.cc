@@ -17,10 +17,11 @@
 #include "cartographer_ros/map_builder_bridge.h"
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "cartographer/io/color.h"
 #include "cartographer/io/proto_stream.h"
-#include "cartographer/mapping/pose_graph.h"
 #include "cartographer_ros/msg_conversion.h"
+#include "cartographer_ros/time_conversion.h"
 #include "cartographer_ros_msgs/StatusCode.h"
 #include "cartographer_ros_msgs/StatusResponse.h"
 
@@ -30,7 +31,7 @@ namespace {
 using ::cartographer::transform::Rigid3d;
 
 constexpr double kTrajectoryLineStripMarkerScale = 0.07;
-constexpr double kLandmarkMarkerScale = 0.3;
+constexpr double kLandmarkMarkerScale = 0.2;
 constexpr double kConstraintMarkerScale = 0.025;
 
 ::std_msgs::ColorRGBA ToMessage(const cartographer::io::FloatColor& color) {
@@ -45,7 +46,7 @@ constexpr double kConstraintMarkerScale = 0.025;
 visualization_msgs::Marker CreateTrajectoryMarker(const int trajectory_id,
                                                   const std::string& frame_id) {
   visualization_msgs::Marker marker;
-  marker.ns = "Trajectory " + std::to_string(trajectory_id);
+  marker.ns = absl::StrCat("Trajectory ", trajectory_id);
   marker.id = 0;
   marker.type = visualization_msgs::Marker::LINE_STRIP;
   marker.header.stamp = ::ros::Time::now();
@@ -75,7 +76,7 @@ visualization_msgs::Marker CreateLandmarkMarker(int landmark_index,
   visualization_msgs::Marker marker;
   marker.ns = "Landmarks";
   marker.id = landmark_index;
-  marker.type = visualization_msgs::Marker::CUBE;
+  marker.type = visualization_msgs::Marker::SPHERE;
   marker.header.stamp = ::ros::Time::now();
   marker.header.frame_id = frame_id;
   marker.scale.x = kLandmarkMarkerScale;
@@ -162,9 +163,8 @@ void MapBuilderBridge::RunFinalOptimization() {
 
 bool MapBuilderBridge::SerializeState(const std::string& filename,
                                       const bool include_unfinished_submaps) {
-  cartographer::io::ProtoStreamWriter writer(filename);
-  map_builder_->SerializeState(include_unfinished_submaps, &writer);
-  return writer.Close();
+  return map_builder_->SerializeStateToFile(include_unfinished_submaps,
+                                            filename);
 }
 
 void MapBuilderBridge::HandleSubmapQuery(
@@ -200,7 +200,15 @@ void MapBuilderBridge::HandleSubmapQuery(
 
 std::map<int, ::cartographer::mapping::PoseGraphInterface::TrajectoryState>
 MapBuilderBridge::GetTrajectoryStates() {
-  return map_builder_->pose_graph()->GetTrajectoryStates();
+  auto trajectory_states = map_builder_->pose_graph()->GetTrajectoryStates();
+  // Add active trajectories that are not yet in the pose graph, but are e.g.
+  // waiting for input sensor data and thus already have a sensor bridge.
+  for (const auto& sensor_bridge : sensor_bridges_) {
+    trajectory_states.insert(std::make_pair(
+        sensor_bridge.first,
+        ::cartographer::mapping::PoseGraphInterface::TrajectoryState::ACTIVE));
+  }
+  return trajectory_states;
 }
 
 cartographer_ros_msgs::SubmapList MapBuilderBridge::GetSubmapList() {
@@ -250,6 +258,30 @@ MapBuilderBridge::GetLocalTrajectoryData() {
   return local_trajectory_data;
 }
 
+void MapBuilderBridge::HandleTrajectoryQuery(
+    cartographer_ros_msgs::TrajectoryQuery::Request& request,
+    cartographer_ros_msgs::TrajectoryQuery::Response& response) {
+  // This query is safe if the trajectory doesn't exist (returns 0 poses).
+  // However, we can filter unwanted states at the higher level in the node.
+  const auto node_poses = map_builder_->pose_graph()->GetTrajectoryNodePoses();
+  for (const auto& node_id_data :
+       node_poses.trajectory(request.trajectory_id)) {
+    if (!node_id_data.data.constant_pose_data.has_value()) {
+      continue;
+    }
+    geometry_msgs::PoseStamped pose_stamped;
+    pose_stamped.header.frame_id = node_options_.map_frame;
+    pose_stamped.header.stamp =
+        ToRos(node_id_data.data.constant_pose_data.value().time);
+    pose_stamped.pose = ToGeometryMsgPose(node_id_data.data.global_pose);
+    response.trajectory.push_back(pose_stamped);
+  }
+  response.status.code = cartographer_ros_msgs::StatusCode::OK;
+  response.status.message = absl::StrCat(
+      "Retrieved ", response.trajectory.size(),
+      " trajectory nodes from trajectory ", request.trajectory_id, ".");
+}
+
 visualization_msgs::MarkerArray MapBuilderBridge::GetTrajectoryNodeList() {
   visualization_msgs::MarkerArray trajectory_node_list;
   const auto node_poses = map_builder_->pose_graph()->GetTrajectoryNodePoses();
@@ -266,7 +298,7 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetTrajectoryNodeList() {
   const auto constraints = map_builder_->pose_graph()->constraints();
   for (const auto& constraint : constraints) {
     if (constraint.tag ==
-        cartographer::mapping::PoseGraph::Constraint::INTER_SUBMAP) {
+        cartographer::mapping::PoseGraphInterface::Constraint::INTER_SUBMAP) {
       if (constraint.node_id.trajectory_id ==
           constraint.submap_id.trajectory_id) {
         trajectory_to_last_inter_submap_constrained_node[constraint.node_id
@@ -418,7 +450,7 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetConstraintList() {
     visualization_msgs::Marker *constraint_marker, *residual_marker;
     std_msgs::ColorRGBA color_constraint, color_residual;
     if (constraint.tag ==
-        cartographer::mapping::PoseGraph::Constraint::INTRA_SUBMAP) {
+        cartographer::mapping::PoseGraphInterface::Constraint::INTRA_SUBMAP) {
       constraint_marker = &constraint_intra_marker;
       residual_marker = &residual_intra_marker;
       // Color mapping for submaps of various trajectories - add trajectory id

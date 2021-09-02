@@ -12,16 +12,18 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 
-=======
-ROS API
-=======
+===============================
+ROS API reference documentation
+===============================
+
+.. image:: nodes_graph_demo_2d.jpg
 
 Cartographer Node
 =================
 
 The `cartographer_node`_ is the SLAM node used for online, real-time SLAM.
 
-.. _cartographer_node: https://github.com/googlecartographer/cartographer_ros/blob/master/cartographer_ros/cartographer_ros/node_main.cc
+.. _cartographer_node: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros/cartographer_ros/node_main.cc
 
 Command-line Flags
 ------------------
@@ -80,6 +82,10 @@ submap_list (`cartographer_ros_msgs/SubmapList`_)
   List of all submaps, including the pose and latest version number of each
   submap, across all trajectories.
 
+tracked_pose (`geometry_msgs/PoseStamped`_)
+  Only published if the parameter ``publish_tracked_pose`` is set to ``true``.
+  The pose of the tracked frame with respect to the map frame.
+
 Services
 --------
 
@@ -92,9 +98,11 @@ submap_query (`cartographer_ros_msgs/SubmapQuery`_)
   Fetches the requested submap.
 
 start_trajectory (`cartographer_ros_msgs/StartTrajectory`_)
-  Starts another trajectory by specifying its sensor topics and trajectory
-  options as an binary-encoded proto. Returns an assigned trajectory ID.
-  The ``start_trajectory`` executable provides a convenient wrapper to use this service.
+  Starts a trajectory using default sensor topics and the provided configuration.
+  An initial pose can be optionally specified. Returns an assigned trajectory ID.
+
+trajectory_query (`cartographer_ros_msgs/TrajectoryQuery`_)
+  Returns the trajectory data from the pose graph.
 
 finish_trajectory (`cartographer_ros_msgs/FinishTrajectory`_)
   Finishes the given `trajectory_id`'s trajectory by running a final optimization.
@@ -116,6 +124,8 @@ read_metrics (`cartographer_ros_msgs/ReadMetrics`_)
 Required tf Transforms
 ----------------------
 
+.. image:: frames_demo_2d.jpg
+
 Transforms from all incoming sensor data frames to the :doc:`configured
 <configuration>` *tracking_frame* and *published_frame* must be available.
 Typically, these are published periodically by a `robot_state_publisher` or a
@@ -125,21 +135,23 @@ Provided tf Transforms
 ----------------------
 
 The transformation between the :doc:`configured <configuration>` *map_frame*
-and *published_frame* is always provided.
+and *published_frame* is provided unless the parameter ``publish_to_tf`` is set to ``false``.
 
-If *provide_odom_frame* is enabled in the :doc:`configuration`, a continuous
+If *provide_odom_frame* is enabled in the :doc:`configuration`, additionally a continuous
 (i.e. unaffected by loop closure) transform between the :doc:`configured
 <configuration>` *odom_frame* and *published_frame* will be provided.
 
 .. _robot_state_publisher: http://wiki.ros.org/robot_state_publisher
 .. _static_transform_publisher: http://wiki.ros.org/tf#static_transform_publisher
-.. _cartographer_ros_msgs/FinishTrajectory: https://github.com/googlecartographer/cartographer_ros/blob/master/cartographer_ros_msgs/srv/FinishTrajectory.srv
-.. _cartographer_ros_msgs/SubmapList: https://github.com/googlecartographer/cartographer_ros/blob/master/cartographer_ros_msgs/msg/SubmapList.msg
-.. _cartographer_ros_msgs/SubmapQuery: https://github.com/googlecartographer/cartographer_ros/blob/master/cartographer_ros_msgs/srv/SubmapQuery.srv
-.. _cartographer_ros_msgs/StartTrajectory: https://github.com/googlecartographer/cartographer_ros/blob/master/cartographer_ros_msgs/srv/StartTrajectory.srv
-.. _cartographer_ros_msgs/WriteState: https://github.com/googlecartographer/cartographer_ros/blob/master/cartographer_ros_msgs/srv/WriteState.srv
-.. _cartographer_ros_msgs/GetTrajectoryStates: https://github.com/googlecartographer/cartographer_ros/blob/master/cartographer_ros_msgs/srv/GetTrajectoryStates.srv
-.. _cartographer_ros_msgs/ReadMetrics: https://github.com/googlecartographer/cartographer_ros/blob/master/cartographer_ros_msgs/srv/ReadMetrics.srv
+.. _cartographer_ros_msgs/FinishTrajectory: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros_msgs/srv/FinishTrajectory.srv
+.. _cartographer_ros_msgs/SubmapList: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros_msgs/msg/SubmapList.msg
+.. _cartographer_ros_msgs/SubmapQuery: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros_msgs/srv/SubmapQuery.srv
+.. _cartographer_ros_msgs/StartTrajectory: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros_msgs/srv/StartTrajectory.srv
+.. _cartographer_ros_msgs/TrajectoryQuery: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros_msgs/srv/TrajectoryQuery.srv
+.. _cartographer_ros_msgs/WriteState: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros_msgs/srv/WriteState.srv
+.. _cartographer_ros_msgs/GetTrajectoryStates: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros_msgs/srv/GetTrajectoryStates.srv
+.. _cartographer_ros_msgs/ReadMetrics: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros_msgs/srv/ReadMetrics.srv
+.. _geometry_msgs/PoseStamped: http://docs.ros.org/api/geometry_msgs/html/msg/PoseStamped.html
 .. _nav_msgs/OccupancyGrid: http://docs.ros.org/api/nav_msgs/html/msg/OccupancyGrid.html
 .. _nav_msgs/Odometry: http://docs.ros.org/api/nav_msgs/html/msg/Odometry.html
 .. _sensor_msgs/Imu: http://docs.ros.org/api/sensor_msgs/html/msg/Imu.html
@@ -157,7 +169,25 @@ In all other regards, it behaves like the ``cartographer_node``.
 Each bag will become a separate trajectory in the final state.
 Once it is done processing all data, it writes out the final Cartographer state and exits.
 
-.. _offline_node: https://github.com/googlecartographer/cartographer_ros/blob/master/cartographer_ros/cartographer_ros/offline_node_main.cc
+.. _offline_node: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros/cartographer_ros/offline_node_main.cc
+
+
+Published Topics
+----------------
+
+In addition to the topics that are published by the online node, this node also publishes:
+
+~bagfile_progress (`cartographer_ros_msgs/BagfileProgress`_)
+  Bag files processing progress including detailed information about the bag currently being processed which will be published with a predefined
+  interval that can be specified using ``~bagfile_progress_pub_interval`` ROS parameter.
+
+.. _cartographer_ros_msgs/BagfileProgress: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros_msgs/msg/BagfileProgress.msg
+
+Parameters
+----------
+
+~bagfile_progress_pub_interval (double, default=10.0):
+  The interval of publishing bag files processing progress in seconds.
 
 
 Occupancy grid Node
@@ -169,7 +199,7 @@ Generating the map is expensive and slow, so map updates are in the order of sec
 You can can selectively include/exclude submaps from frozen (static) or active trajectories with a command line option.
 Call the node with the ``--help`` flag to see these options.
 
-.. _occupancy_grid_node: https://github.com/googlecartographer/cartographer_ros/blob/master/cartographer_ros/cartographer_ros/occupancy_grid_node_main.cc
+.. _occupancy_grid_node: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros/cartographer_ros/occupancy_grid_node_main.cc
 
 Subscribed Topics
 -----------------
@@ -191,7 +221,7 @@ Pbstream Map Publisher Node
 The `pbstream_map_publisher`_ is a simple node that creates a static occupancy grid out of a serialized Cartographer state (pbstream format).
 It is an efficient alternative to the occupancy grid node if live updates are not important.
 
-.. _pbstream_map_publisher: https://github.com/googlecartographer/cartographer_ros/blob/master/cartographer_ros/cartographer_ros/pbstream_map_publisher_main.cc
+.. _pbstream_map_publisher: https://github.com/cartographer-project/cartographer_ros/blob/master/cartographer_ros/cartographer_ros/pbstream_map_publisher_main.cc
 
 Subscribed Topics
 -----------------
